@@ -1,5 +1,9 @@
 # pyrefly: ignore [missing-import]
 import torch
+# pyrefly: ignore [missing-import]
+import matplotlib.pyplot as plt
+# pyrefly: ignore [missing-import]
+import numpy as np
 
 def bit_error_rate(tx_bits, rx_bits):
     tx = tx_bits.to(torch.float32)
@@ -63,3 +67,81 @@ def receiver_amplifier(rx_signal, gain_db=0.0):
     """
     gain_linear = db_to_linear_amplitude(gain_db)
     return gain_linear * rx_signal
+
+
+# ---------------------------------------------------------------------------
+# Abdallah Point 3: Monte-Carlo BER vs SNR with a 98% confidence interval.
+# The paper repeats each SNR point until a 98% CI is reached and reports that
+# 5 repetitions suffice. The single-shot notebook run did none of this.
+# ---------------------------------------------------------------------------
+
+def _t_critical_98(df):
+    """Two-sided 98% Student-t critical value (alpha=0.02). Small lookup +
+    normal fallback so we don't add a SciPy dependency."""
+    table = {1: 31.821, 2: 6.965, 3: 4.541, 4: 3.747, 5: 3.365, 6: 3.143,
+             7: 2.998, 8: 2.896, 9: 2.821, 10: 2.764, 12: 2.681, 15: 2.602,
+             20: 2.528, 25: 2.485, 30: 2.457, 40: 2.423, 60: 2.390, 120: 2.358}
+    if df in table:
+        return table[df]
+    keys = sorted(table)
+    if df < keys[0]:
+        return table[keys[0]]
+    if df > keys[-1]:
+        return 2.326  # z_{0.99}
+    lo = max(k for k in keys if k <= df)
+    hi = min(k for k in keys if k >= df)
+    w = (df - lo) / (hi - lo)
+    return table[lo] * (1 - w) + table[hi] * w
+
+
+def snr_sweep_ber(run_once, snr_list, min_reps=5, max_reps=30,
+                  ci=0.98, rel_tol=0.10, verbose=True):
+    """
+    Sweep SNR and, at each point, repeat the end-to-end chain until a `ci`
+    confidence interval is reached (>= min_reps, <= max_reps).
+
+    run_once(snr_db, seed) -> float BER for one independent trial.
+
+    Returns a list of dicts: snr_db, ber_mean, ci_half, n_reps, bers.
+    Only ci=0.98 is wired to the t-table; other values fall back to it.
+    """
+    results = []
+    for snr_db in snr_list:
+        bers = []
+        for rep in range(max_reps):
+            bers.append(float(run_once(snr_db, seed=rep)))
+            n = len(bers)
+            if n >= min_reps:
+                arr = np.asarray(bers, dtype=np.float64)
+                sd = arr.std(ddof=1)
+                half = _t_critical_98(n - 1) * sd / np.sqrt(n)
+                mean = arr.mean()
+                # stop once the CI half-width is small relative to the mean
+                if mean == 0 or half <= rel_tol * mean:
+                    break
+        arr = np.asarray(bers, dtype=np.float64)
+        mean = float(arr.mean())
+        half = float(_t_critical_98(len(arr) - 1) * arr.std(ddof=1) / np.sqrt(len(arr))) \
+            if len(arr) > 1 else 0.0
+        results.append({"snr_db": snr_db, "ber_mean": mean, "ci_half": half,
+                        "n_reps": len(arr), "bers": bers})
+        if verbose:
+            print(f"SNR={snr_db:5.1f} dB  BER={mean:.3e}  +/-{half:.2e} (98% CI, n={len(arr)})")
+    return results
+
+
+def plot_ber_vs_snr(results_by_label, title="BER vs SNR (98% CI)"):
+    """results_by_label: {label: [snr_sweep_ber dicts]} -> semilogy plot w/ error bars."""
+    plt.figure(figsize=(7, 5))
+    for label, res in results_by_label.items():
+        x = [r["snr_db"] for r in res]
+        y = np.array([max(r["ber_mean"], 1e-7) for r in res])
+        e = np.array([r["ci_half"] for r in res])
+        plt.errorbar(x, y, yerr=e, marker="o", capsize=3, label=label)
+    plt.yscale("log")
+    plt.xlabel("SNR (dB)")
+    plt.ylabel("Bit error rate")
+    plt.title(title)
+    plt.grid(True, which="both")
+    plt.legend()
+    plt.show()

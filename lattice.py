@@ -6,44 +6,80 @@ class LatticeBasedEncryptor:
     def __init__(
         self,
         n,
-        sigma=0.001,
-        num_ops=45,
+        sigma=None,
+        num_ops=60,
         max_coeff=2,
         goodTh=0.8,
-        badTh=0.01,
-        max_bad_attempts=70,
-        max_cond=1e5
+        badTh=0.001,
+        max_bad_attempts=120,
+        max_cond=1e12,
+        insecure_identity_R=False,
+        pert=2,
+        k=None,
+        verbose=True,
     ):
         """
-        n: vector dimension, should match fft_size
-        sigma: small encryption error value
+        n: vector dimension, should match fft_size (== lattice dimension == #sub-carriers)
+        sigma: amplitude of the +/- error vector E (Abdallah Sec. 4.2.4).
+               If None, it is auto-selected inside the valid window
+                    1/(2*rho_B) < sigma < 1/(2*rho_R)
+               (geometric-mean placement). The paper's "sigma a positive integer"
+               is only admissible when rho_R < 0.5; that almost never holds together
+               with HR(R) >= 0.8, so we honour the real correctness/security bound
+               instead and warn if an explicit sigma falls outside the window.
 
         Destination user's lattice keypair:
-            R = private good basis
-            B = public degraded basis
+            R = private good basis,  B = public degraded basis.
         """
         self.n = n
-        self.sigma = sigma
 
-        self.R, self.B = generate_lattice_bases(
+        self.R, self.B, self.info = generate_lattice_bases(
             n=n,
             num_ops=num_ops,
             max_coeff=max_coeff,
             goodTh=goodTh,
             badTh=badTh,
             max_bad_attempts=max_bad_attempts,
-            max_cond=max_cond
+            max_cond=max_cond,
+            insecure_identity_R=insecure_identity_R,
+            pert=pert,
+            k=k,
+            verbose=verbose,
         )
 
         # pinv is safer than inv for noisy floating-point recovery.
-        self.B_inv = torch.linalg.pinv(self.B)
-        self.R_inv = torch.linalg.pinv(self.R)
+        self.B_inv = torch.linalg.pinv(self.B.to(torch.complex128))
+        self.R_inv = torch.linalg.pinv(self.R.to(torch.complex128))
 
-        print("Private basis R shape:", self.R.shape)
-        print("Public basis B shape:", self.B.shape)
-        print("Hadamard ratio R:", hadamard_ratio(self.R.real).item())
-        print("Hadamard ratio B:", hadamard_ratio(self.B.real).item())
-        print("Condition number B:", matrix_condition_number(self.B.real))
+        # --- Abdallah Point 1: select / validate sigma against the rule ---
+        lo = self.info["sigma_min_secure"]   # 1/(2*rho_B): below this, eavesdropper reads it
+        hi = self.info["sigma_max_correct"]  # 1/(2*rho_R): above this, legit decryption errors
+        if sigma is None:
+            if lo < hi:
+                # Place sigma high in the window: as large as correctness allows
+                # (maximally scrambles an eavesdropper) while staying < sigma_max.
+                sigma = float(max(0.9 * hi, min(2.0 * lo, hi)))
+            else:
+                sigma = 0.5 * hi
+                print("WARNING: empty sigma window; scheme is not simultaneously "
+                      "correct and secure for this basis pair.")
+        self.sigma = sigma
+
+        if not (sigma < hi):
+            print(f"WARNING: sigma={sigma:.3e} >= sigma_max_correct={hi:.3e}; "
+                  "legitimate decryption will incur errors (Abdallah Sec. 4.2.4).")
+        if not (sigma > lo):
+            print(f"WARNING: sigma={sigma:.3e} <= sigma_min_secure={lo:.3e}; "
+                  "an eavesdropper holding only B can recover the plaintext.")
+
+        if verbose:
+            print("Private basis R shape:", tuple(self.R.shape),
+                  "| Public basis B shape:", tuple(self.B.shape))
+            print(f"sigma = {self.sigma:.4e}  (window {lo:.3e} .. {hi:.3e})")
+            if n < 350:
+                print(f"NOTE: lattice dimension n={n} < 350. Abdallah Sec. 4.3 requires "
+                      "n > 350 (>=400 to resist GGH/NTRU cryptanalysis) for security; "
+                      "smaller n is for performance study only.")
 
     def encrypt(self, symbols_lattice):
         """
@@ -59,7 +95,7 @@ class LatticeBasedEncryptor:
         else:
             S = symbols_lattice
 
-        S = S.to(torch.complex64)
+        S = S.to(torch.complex128)
 
         error_sign = 2 * torch.randint(
             low=0,
@@ -68,35 +104,39 @@ class LatticeBasedEncryptor:
             device=S.device
         ) - 1
 
-        E = self.sigma * error_sign.to(torch.complex64)
-        C = torch.matmul(S, self.B.T.to(S.device)) + E
-        return C
+        E = self.sigma * error_sign.to(torch.complex128)
+        C = torch.matmul(S, self.B.to(torch.complex128).T.to(S.device)) + E
+        # transmit at single precision (DAC-like); keys/decrypt stay float64
+        return C.to(torch.complex64)
 
     def decrypt_linear(self, encrypted_rx_symbols):
         """
         Simple inverse recovery:
             S_hat = C @ B^{-T}
         """
-        C_hat = encrypted_rx_symbols.to(torch.complex64)
+        C_hat = encrypted_rx_symbols.to(torch.complex128)
         return torch.matmul(C_hat, self.B_inv.T.to(C_hat.device))
 
     def decrypt_w_babai(self, encrypted_rx_symbols, use_round=True):
         """
-        Abdallah Algorithm 3 / Babai-like decryption.
+        Abdallah Algorithm 3 / Babai's ROUND-OFF decryption.
 
-        Row-vector equivalent of:
-            S_hat = B^{-1} R [R^{-1} C]
-
-        With row vectors:
+        Row-vector equivalent of the paper's   S_hat = B^{-1} R [R^{-1} C] :
             Y          = C_hat @ R_inv.T
-            Y_integer  = round(Y) or ceil(Y)
+            Y_integer  = round(Y)            # NEAREST integer
             lattice_pt = Y_integer @ R.T
             S_hat      = lattice_pt @ B_inv.T
+
+        IMPORTANT (Abdallah Sec. 3.3.1 / 4.2.3): the paper prints the operator as
+        the ceiling symbol but its own text says "round to the nearest integers",
+        and Babai's round-off is defined with nearest-integer rounding. Using
+        ceiling biases every coordinate by ~+0.5 and breaks recovery, so
+        use_round=False is kept only as an explicit (discouraged) experiment.
         """
-        C_hat = encrypted_rx_symbols.to(torch.complex64)
+        C_hat = encrypted_rx_symbols.to(torch.complex128)
         device = C_hat.device
 
-        R = self.R.to(device)
+        R = self.R.to(torch.complex128).to(device)
         B_inv = self.B_inv.to(device)
         R_inv = self.R_inv.to(device)
 
@@ -105,12 +145,30 @@ class LatticeBasedEncryptor:
         if use_round:
             Y_integer = torch.round(Y.real) + 1j * torch.round(Y.imag)
         else:
+            print("WARNING: use_round=False uses ceiling, which is NOT Babai "
+                  "round-off and will corrupt decryption (see docstring).")
             Y_integer = torch.ceil(Y.real) + 1j * torch.ceil(Y.imag)
 
-        Y_integer = Y_integer.to(torch.complex64)
+        Y_integer = Y_integer.to(torch.complex128)
         lattice_point = torch.matmul(Y_integer, R.T)
         S_hat = torch.matmul(lattice_point, B_inv.T)
         return S_hat
+
+    def eavesdropper_babai(self, encrypted_rx_symbols):
+        """
+        Best an eavesdropper can do with only the PUBLIC (bad) basis B:
+        Babai round-off in B. If B is genuinely bad and sigma is in the valid
+        window, this returns garbage -- which is the whole point of the scheme.
+        Used by the security sweep to measure attacker symbol-error-rate.
+        """
+        C_hat = encrypted_rx_symbols.to(torch.complex128)
+        device = C_hat.device
+        B = self.B.to(torch.complex128).to(device)
+        B_inv = self.B_inv.to(device)
+        Y = torch.matmul(C_hat, B_inv.T)
+        Y_integer = (torch.round(Y.real) + 1j * torch.round(Y.imag)).to(torch.complex64)
+        # coordinates in the B basis are already the message coordinates S
+        return Y_integer.to(torch.complex64)
 
 
 def qam16_lattice_to_normalized(symbols_lattice):
