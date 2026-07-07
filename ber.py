@@ -132,16 +132,42 @@ def snr_sweep_ber(run_once, snr_list, min_reps=5, max_reps=30,
 
 def plot_ber_vs_snr(results_by_label, title="BER vs SNR (98% CI)"):
     """results_by_label: {label: [snr_sweep_ber dicts]} -> semilogy plot w/ error bars."""
-    plt.figure(figsize=(7, 5))
-    for label, res in results_by_label.items():
-        x = [r["snr_db"] for r in res]
-        y = np.array([max(r["ber_mean"], 1e-7) for r in res])
-        e = np.array([r["ci_half"] for r in res])
-        plt.errorbar(x, y, yerr=e, marker="o", capsize=3, label=label)
-    plt.yscale("log")
-    plt.xlabel("SNR (dB)")
-    plt.ylabel("Bit error rate")
-    plt.title(title)
-    plt.grid(True, which="both")
-    plt.legend()
+    # Abdallah Fig. 5 / Fig. 6 style: distinct marker+color per curve
+    styles = [
+        {"color": "blue",    "marker": "+", "ms": 9},
+        {"color": "red",     "marker": "*", "ms": 10},
+        {"color": "magenta", "marker": "x", "ms": 9},
+        {"color": "black",   "marker": "o", "ms": 6},
+        {"color": "green",   "marker": "D", "ms": 6},
+        {"color": "orange",  "marker": "^", "ms": 6},
+    ]
+
+    fig, ax = plt.subplots(figsize=(7, 5.5))
+    all_snr = []
+    for i, (label, res) in enumerate(results_by_label.items()):
+        st = styles[i % len(styles)]
+        x_all = np.array([r["snr_db"]   for r in res])
+        y_all = np.array([r["ber_mean"] for r in res])
+        all_snr.extend(x_all.tolist())
+
+        # Drop zero-BER points so curves terminate at the waterfall floor
+        mask = y_all > 0
+        x, y = x_all[mask], y_all[mask]
+        if len(x) == 0:
+            continue
+
+        ax.semilogy(x, y, color=st["color"], marker=st["marker"],
+                    linestyle="-", markersize=st["ms"], linewidth=1.2, label=label)
+
+    snr_lo = min(all_snr) if all_snr else 0
+    snr_hi = max(all_snr) if all_snr else 50
+    ax.set_xlim(snr_lo, snr_hi)
+    ax.set_xticks(np.arange(snr_lo, snr_hi + 1, 5))
+    ax.set_ylim(1e-6, 1e0)
+    ax.set_xlabel("SNR (dB)", fontsize=12)
+    ax.set_ylabel("Error rate", fontsize=12)
+    ax.set_title(title, fontsize=13)
+    ax.grid(True, which="both", linestyle="--", linewidth=0.4, alpha=0.7)
+    ax.legend(fontsize=10, loc="upper right", framealpha=1.0, edgecolor="black")
+    plt.tight_layout()
     plt.show()
