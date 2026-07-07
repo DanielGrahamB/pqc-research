@@ -19,15 +19,27 @@ def plot_constellation(tx, rx, title, limit=None, max_points=6000):
     plt.xlabel("In-phase")
     plt.ylabel("Quadrature")
     plt.grid(True)
-    plt.axis("equal")
     if limit is not None:
         plt.xlim(-limit, limit)
         plt.ylim(-limit, limit)
+    else:
+        # independent symmetric limits per axis
+        all_real = np.concatenate([tx.real.numpy(), rx.real.numpy()])
+        all_imag = np.concatenate([tx.imag.numpy(), rx.imag.numpy()])
+        xlim = float(np.abs(all_real).max()) * 1.1
+        ylim = float(np.abs(all_imag).max()) * 1.1
+        plt.xlim(-xlim, xlim)
+        plt.ylim(-ylim, ylim)
     plt.legend()
     plt.show()
 
 
-def plot_rx_only(rx, title, limit=None, max_points=6000):
+def plot_rx_only(rx, title, limit=None, xlim=None, ylim=None, max_points=6000):
+    """
+    limit      : single symmetric bound for both axes (overridden by xlim/ylim)
+    xlim/ylim  : explicit symmetric half-range per axis, e.g. xlim=2000 -> x in [-2000, 2000]
+                 If neither is given, auto-computes independent symmetric limits from data.
+    """
     rx = rx.detach().cpu().flatten()
 
     if rx.numel() > max_points:
@@ -39,10 +51,12 @@ def plot_rx_only(rx, title, limit=None, max_points=6000):
     plt.xlabel("In-phase")
     plt.ylabel("Quadrature")
     plt.grid(True)
-    plt.axis("equal")
-    if limit is not None:
-        plt.xlim(-limit, limit)
-        plt.ylim(-limit, limit)
+
+    # resolve limits: explicit per-axis > single limit > auto
+    xb = xlim if xlim is not None else (limit if limit is not None else float(rx.real.abs().max()) * 1.1)
+    yb = ylim if ylim is not None else (limit if limit is not None else float(rx.imag.abs().max()) * 1.1)
+    plt.xlim(-xb, xb)
+    plt.ylim(-yb, yb)
     plt.show()
 
 
