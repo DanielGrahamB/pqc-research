@@ -7,12 +7,11 @@ class LatticeBasedEncryptor:
         self,
         n,
         sigma=None,
-        num_ops=60,
-        max_coeff=2,
+        rounds=5,
+        max_coeff=3,
         goodTh=0.8,
         badTh=0.001,
-        max_bad_attempts=120,
-        max_cond=1e12,
+        max_bad_attempts=30,
         insecure_identity_R=False,
         pert=2,
         k=None,
@@ -35,12 +34,11 @@ class LatticeBasedEncryptor:
 
         self.R, self.B, self.info = generate_lattice_bases(
             n=n,
-            num_ops=num_ops,
+            rounds=rounds,
             max_coeff=max_coeff,
             goodTh=goodTh,
             badTh=badTh,
             max_bad_attempts=max_bad_attempts,
-            max_cond=max_cond,
             insecure_identity_R=insecure_identity_R,
             pert=pert,
             k=k,
@@ -106,8 +104,8 @@ class LatticeBasedEncryptor:
 
         E = self.sigma * error_sign.to(torch.complex128)
         C = torch.matmul(S, self.B.to(torch.complex128).T.to(S.device)) + E
-        # transmit at single precision (DAC-like); keys/decrypt stay float64
-        return C.to(torch.complex64)
+        # Keep double precision to avoid precision limits in double-precision mod/demod
+        return C.to(torch.complex128)
 
     def decrypt_linear(self, encrypted_rx_symbols):
         """

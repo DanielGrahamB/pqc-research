@@ -150,8 +150,9 @@ def plot_ber_vs_snr(results_by_label, title="BER vs SNR (98% CI)"):
         y_all = np.array([r["ber_mean"] for r in res])
         all_snr.extend(x_all.tolist())
 
-        # Drop zero-BER points so curves terminate at the waterfall floor
-        mask = y_all > 0
+        # Drop points below the y-axis limit (1e-6) so curves terminate cleanly
+        # at the waterfall floor without crossing the bottom axis line
+        mask = y_all >= 1e-6
         x, y = x_all[mask], y_all[mask]
         if len(x) == 0:
             continue
