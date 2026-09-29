@@ -23,6 +23,14 @@ Search date: 2026-09-29. **Access** column: *read* = full text or HTML read; *ab
 | Ling, Luzzi, Belfiore, Stehlé, "Semantically secure lattice codes for the Gaussian wiretap channel", *IEEE T-IT* 60(10) 2014, [arXiv 1210.6673](https://arxiv.org/abs/1210.6673); Campello, Ling, Belfiore, "Semantically secure lattice codes for compound MIMO channels", [arXiv 1903.09954](https://arxiv.org/pdf/1903.09954) | abstract | Information-theoretic lattice secrecy at normal SNRs using mod-Λ channels and the flatness factor. The MIMO version is directly relevant to our uplink. |
 | "A survey of lattice-based physical-layer security for wireless systems with p-modular lattice constructions", *Entropy* 28(2) 235 (2026), [PMC](https://pmc.ncbi.nlm.nih.gov/articles/PMC12939611/) | abstract (open access) | Recent survey linking lattice cryptography and lattice wiretap coding. Good for the related-work section. |
 
+## B2. Standards for the LWE replacement
+
+| Ref | Access | Relevance |
+|---|---|---|
+| NIST **FIPS 203**, *Module-Lattice-Based Key-Encapsulation Mechanism Standard (ML-KEM)*, Aug 2024. [csrc.nist.gov](https://csrc.nist.gov/pubs/fips/203/final) | known / abstract | Main replacement. Module-LWE, n = 256, q = 3329, k = 2/3/4. Its inner scheme K-PKE "shall not be used as a stand-alone scheme" (the FO transform gives the full security), so we use ML-KEM for the session key and K-PKE-style masking inside the session. [Overview](https://www.encryptionconsulting.com/overview-of-fips-203/) |
+| **FrodoKEM**, ISO/IEC 18033-2:2006/Amd 2:2026; recommended by BSI (long-term confidentiality) and ANSSI ("conservative option"). [frodokem.org](https://frodokem.org/), [Microsoft Research blog](https://www.microsoft.com/en-us/research/blog/frodokem-a-conservative-quantum-safe-cryptographic-algorithm/), [IETF draft](https://datatracker.ietf.org/doc/html/draft-longa-cfrg-frodokem-security-considerations/) | abstract | Plain LWE (no ring structure), n = 640/976/1344, q = 2¹⁵/2¹⁶, 2–4 bits per coefficient. The closest standard to the Lindner–Peikert prototype. |
+| NIST FIPS 202 (SHA-3 / SHAKE) | known | XOF used to derive the per-tile randomness from the ML-KEM shared secret. |
+
 ## C. MIMO physical-layer cryptography (the channel as the key)
 
 | Ref | Access | Relevance |
