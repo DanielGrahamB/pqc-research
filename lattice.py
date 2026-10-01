@@ -3,6 +3,9 @@ import torch
 from metrics import generate_lattice_bases, hadamard_ratio, matrix_condition_number
 
 class LatticeBasedEncryptor:
+    # Default for `complex_error` (set to True in a notebook to switch every engine at once).
+    COMPLEX_ERROR_DEFAULT = False
+
     def __init__(
         self,
         n,
@@ -16,6 +19,7 @@ class LatticeBasedEncryptor:
         pert=2,
         k=None,
         verbose=True,
+        complex_error=None,
     ):
         """
         n: vector dimension, should match fft_size (== lattice dimension == #sub-carriers)
@@ -27,10 +31,16 @@ class LatticeBasedEncryptor:
                with HR(R) >= 0.8, so we honour the real correctness/security bound
                instead and warn if an explicit sigma falls outside the window.
 
+        complex_error: if True, E = sigma * (+-1 +- 1j). The bases are real, so the
+               real (I) and imaginary (Q) parts of S are encrypted independently; with
+               a real-only E (False, the original behaviour) the Q part carries NO error
+               and anyone holding B recovers it as Im(C) @ B^{-T}. None -> COMPLEX_ERROR_DEFAULT.
+
         Destination user's lattice keypair:
             R = private good basis,  B = public degraded basis.
         """
         self.n = n
+        self.complex_error = self.COMPLEX_ERROR_DEFAULT if complex_error is None else complex_error
 
         self.R, self.B, self.info = generate_lattice_bases(
             n=n,
@@ -103,6 +113,9 @@ class LatticeBasedEncryptor:
         ) - 1
 
         E = self.sigma * error_sign.to(torch.complex128)
+        if self.complex_error:
+            imag_sign = 2 * torch.randint(low=0, high=2, size=S.shape, device=S.device) - 1
+            E = E + 1j * self.sigma * imag_sign.to(torch.complex128)
         C = torch.matmul(S, self.B.to(torch.complex128).T.to(S.device)) + E
         # Keep double precision to avoid precision limits in double-precision mod/demod
         return C.to(torch.complex128)
