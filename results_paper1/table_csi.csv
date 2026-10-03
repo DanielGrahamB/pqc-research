@@ -1,0 +1,5 @@
+csi,plain,ggh,ggh_floor_ber,plain_floor_ber
+perfect CSI,15.857391692690655,103.61496280434929,0.0,0.0
+ideal estimator (NMSE = $N_0$),22.771243244798832,119.08005347414405,0.0,0.0
+"LS, linear interp.",nan,nan,0.5002581278483073,0.0005045572916666667
+"LS, nearest-neighbour",nan,nan,0.5001691182454427,0.005479939778645833

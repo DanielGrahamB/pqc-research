@@ -1,0 +1,29 @@
+[
+ {
+  "n": 192,
+  "esno_exact": 113.45892625944327,
+  "esno_closed": 117.67407858217945,
+  "esno_closed_best": 114.14924282803149,
+  "esno_closed_worst": 134.14924282803148,
+  "expansion_db": 115.2465364138093,
+  "lattice_term_db": 2.427542168370152
+ },
+ {
+  "n": 384,
+  "esno_exact": 107.9422893957455,
+  "esno_closed": 110.91872214149043,
+  "esno_closed_best": 108.50707774803095,
+  "esno_closed_worst": 128.50707774803095,
+  "expansion_db": 113.46744059742417,
+  "lattice_term_db": -2.5487184559337397
+ },
+ {
+  "n": 512,
+  "esno_exact": 109.07105473881494,
+  "esno_closed": 111.55332892533394,
+  "esno_closed_best": 109.66204877716353,
+  "esno_closed_worst": 129.66204877716353,
+  "expansion_db": 113.81033087081681,
+  "lattice_term_db": -2.2570019454828647
+ }
+]

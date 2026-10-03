@@ -1,0 +1,55 @@
+{
+ "complexity": [
+  {
+   "n": 192,
+   "enc_ops": 73728,
+   "dec_ops": 147456,
+   "enc_ops_per_bit": 96.0,
+   "dec_ops_per_bit": 192.0,
+   "enc_us": 3.443725574925338,
+   "dec_us": 4.661621062496124
+  },
+  {
+   "n": 384,
+   "enc_ops": 294912,
+   "dec_ops": 589824,
+   "enc_ops_per_bit": 192.0,
+   "dec_ops_per_bit": 384.0,
+   "enc_us": 8.032308642214048,
+   "dec_us": 12.262207064850372
+  },
+  {
+   "n": 512,
+   "enc_ops": 524288,
+   "dec_ops": 1048576,
+   "enc_ops_per_bit": 256.0,
+   "dec_ops_per_bit": 512.0,
+   "enc_us": 9.510904305898293,
+   "dec_us": 15.635823274351424
+  }
+ ],
+ "latency": [
+  {
+   "tile": "full-band 128\u00d74 (n=512)",
+   "T": 4,
+   "buffering_us": 154.16666666666666
+  },
+  {
+   "tile": "full-band 128\u00d73 (n=384)",
+   "T": 3,
+   "buffering_us": 115.62499999999999
+  },
+  {
+   "tile": "sub-band 32\u00d712 (n=384)",
+   "T": 12,
+   "buffering_us": 462.49999999999994
+  },
+  {
+   "tile": "sub-band 16\u00d712 (n=192)",
+   "T": 12,
+   "buffering_us": 462.49999999999994
+  }
+ ],
+ "zf_ops_per_re": 181.33333333333334,
+ "rate_mbps": 12.288
+}

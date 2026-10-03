@@ -1,0 +1,5 @@
+tile,n,z_wrong_median,sym_wrong_frac_median
+full-band 128×4 (n=512),512,2.0,0.2841796875
+full-band 128×3 (n=384),384,1.0,0.296875
+sub-band 32×12 (n=384),384,2.0,0.3802083333333333
+sub-band 16×12 (n=192),192,2.0,0.53125
