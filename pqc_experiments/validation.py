@@ -13,7 +13,7 @@ def identity_fixture(model,packet=0,noiseless=True):
     h=torch.eye(c.num_bs_ant,c.num_users,dtype=torch.complex128,device=c.device)[None,None,:,:,None,None,None].expand(c.batch_size,1,c.num_bs_ant,c.num_users,1,c.num_symbols,c.fft_size).clone()
     shape=(c.batch_size,1,c.num_bs_ant,c.num_symbols,c.fft_size)
     noise=complex_noise(shape,generator(seed+2,c.device),c.device)
-    return {'h':h,'bits':torch.randint(0,2,(c.batch_size,c.num_users,1,c.n_bits),generator=generator(seed+1,c.device),device=c.device).double(),'noise':noise*0 if noiseless else noise,'csi_noise':torch.zeros_like(h),'seed':seed,'fixture_id':f'identity-{seed}'}
+    return {'h':h,'bits':torch.randint(0,2,(c.batch_size,c.num_users,1,c.n_bits),generator=generator(seed+1,c.device),device=c.device).double(),'noise':noise*0 if noiseless else noise,'csi_noise':torch.zeros_like(h),'evm_noise':complex_noise((c.batch_size,c.num_users,1,c.num_symbols,c.fft_size),generator(seed+5,c.device),c.device),'seed':seed,'fixture_id':f'identity-{seed}'}
 
 def validate(registry=None,output=None,device='cpu'):
     from .runner import fingerprint
@@ -23,7 +23,7 @@ def validate(registry=None,output=None,device='cpu'):
         print(name, 'PASS' if condition else 'FAIL',flush=True)
     ref=ExperimentConfig(batch_size=2,device=device)
     key=registry.get(512,ref.seed)
-    for q in (2,4,6):
+    for q in (2,4,6,8):
         for mode,w,t in [('ggh_full',128,4),('ggh_subband',64,8)]:
             c=replace(ref,bits_per_symbol=q,security_mode=mode,tile_width=w,tile_time=t)
             model=ExperimentModel(c,key); f=identity_fixture(model)
@@ -39,7 +39,7 @@ def validate(registry=None,output=None,device='cpu'):
                 r=m.run_packet(120,fixture=identity_fixture(m))
                 check(f'noiseless_{c.scheme}_{receiver}',r['bit_errors']==0,ber=r['ber'],num_bits=r['num_bits'])
     # Hard-to-soft must preserve noiseless labels across every supported QAM.
-    for q in (2,4,6):
+    for q in (2,4,6,8):
         from .security import hard_to_soft
         m=ExperimentModel(replace(ref,bits_per_symbol=q));f=identity_fixture(m)
         llr=hard_to_soft(m.demapper,m.mapper(f['bits']),ref.hard_llr_crossover)
@@ -51,6 +51,10 @@ def validate(registry=None,output=None,device='cpu'):
         m=ExperimentModel(c); rows=[m.run_packet(5,packet=i,fixture=identity_fixture(m,i,False)) for i in range(2)]
         coding_evidence.append({'coded':coded,'ber':sum(r['bit_errors'] for r in rows)/sum(r['num_bits'] for r in rows),'bler':sum(r['block_errors'] for r in rows)/sum(r['num_blocks'] for r in rows)})
     check('conventional_ldpc_gain',coding_evidence[1]['ber']<coding_evidence[0]['ber'] and coding_evidence[1]['bler']<coding_evidence[0]['bler'],observations=coding_evidence)
+    # Hardware paths: mild impairments keep plain QAM reliable at high SNR.
+    for name,update in [('tx_evm',{'tx_evm_db':-40.}),('adc',{'adc_bits':12})]:
+        m=ExperimentModel(replace(ref,**update));r=m.run_packet(40,fixture=identity_fixture(m,noiseless=False))
+        check(f'hardware_{name}_plain',r['ber']<1e-3,ber=r['ber'])
     for receiver in ('zf','lmmse'):
         c=replace(ref,receiver=receiver);m=ExperimentModel(c)
         low=m.run_packet(-5,fixture=identity_fixture(m,noiseless=False));high=m.run_packet(20,fixture=identity_fixture(m,noiseless=False))

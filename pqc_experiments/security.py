@@ -82,7 +82,9 @@ class GGHCodec:
         self.qam_scale=(2*(2**c.bits_per_symbol-1)/3)**.5
     def encrypt(self,x,generator):
         m=self.layout.pack(x*self.qam_scale)
-        e=(2*torch.randint(0,2,m.shape,generator=generator,device=x.device)-1)*self.key.sigma
+        # Complex error: a real-only e leaves the Q part unprotected (Eve reads it with B^-1).
+        sign=lambda:(2*torch.randint(0,2,m.shape,generator=generator,device=x.device)-1).to(torch.float64)
+        e=torch.complex(sign(),sign())*self.key.sigma
         cipher=m@self.B.T+e
         pc=cipher.abs().square().mean((-2,-1),keepdim=True)
         pm=m.abs().square().mean((-2,-1),keepdim=True)

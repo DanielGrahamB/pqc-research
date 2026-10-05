@@ -20,7 +20,7 @@ Use [PQC_Colab_All_Experiments.ipynb](PQC_Colab_All_Experiments.ipynb) as the co
 
 1. Push the companion notebook, `pqc_experiments/`, `metrics.py`, and `requirements-colab.txt` to the `rev1` branch (or change `GIT_REF` in the companion notebook). Push `results/pilot/` too if you want to browse those historical results in Colab. Do not commit Python caches or local virtual environments.
 2. Upload the companion notebook to Colab, or open it from GitHub after pushing. Select a GPU runtime if desired.
-3. Run all. The default runs validation and all ten experiment families at pilot scale, showing tables and figures after each. K and M sensitivity use separate subgroups, producing eleven group folders.
+3. Run all. The default runs validation and all eleven experiment families at pilot scale, showing tables and figures after each. K and M sensitivity use separate subgroups, producing twelve group folders. Experiment 12 is an IoT cost table built from the saved results.
 4. Inspect the completion table and download the ZIP from the final cell, or enable Drive storage before running. Completed matching groups are reused on cell reruns; incomplete attempts are preserved and retried separately.
 
 Set `MODE = "view_saved"` to visualize `results/pilot/` without new simulations. Set `SAVED_RESULTS_ROOT` to another saved run or an extracted Colab download if needed. Set `PROFILE = "extended"` only after reviewing the workload preview; a finer grid and more independent trials are still needed for paper-level thresholds.

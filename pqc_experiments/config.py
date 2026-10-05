@@ -29,11 +29,15 @@ class ExperimentConfig:
     device: str = 'cpu'
     enable_pathloss: bool = False
     enable_shadow_fading: bool = False
+    tx_evm_db: float = None
+    adc_bits: int = None
 
     def __post_init__(self):
         for name, choices in [('scenario', ('umi','uma','rma')), ('receiver', ('zf','lmmse','mmse_sic')), ('csi_mode', ('perfect','ls_nn','ls_lin','controlled_nmse')), ('security_mode', ('none','ggh_full','ggh_subband'))]:
             if getattr(self,name) not in choices: raise ValueError(f'{name}: expected {choices}')
-        if self.bits_per_symbol not in (2,4,6): raise ValueError('Use square QPSK/16-QAM/64-QAM')
+        if self.bits_per_symbol not in (2,4,6,8): raise ValueError('Use square QPSK/16-QAM/64-QAM/256-QAM')
+        if self.tx_evm_db is not None and self.tx_evm_db >= 0: raise ValueError('Transmit EVM must be negative dB')
+        if self.adc_bits is not None and not 1 <= self.adc_bits <= 24: raise ValueError('ADC bits must be in 1..24')
         if min(self.num_users,self.num_bs_ant,self.batch_size,self.fft_size,self.num_data_intervals,self.tile_width,self.tile_time) < 1: raise ValueError('Dimensions must be positive')
         if self.num_bs_ant < self.num_users: raise ValueError('This receiver comparison requires M >= K')
         if self.fft_size % self.num_users: raise ValueError('Kronecker pilots require fft_size divisible by K')

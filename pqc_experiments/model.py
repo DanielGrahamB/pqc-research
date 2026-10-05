@@ -26,6 +26,13 @@ def generator(seed,device): return torch.Generator(device=device).manual_seed(se
 def complex_noise(shape,g,device):
     return torch.complex(torch.randn(shape,generator=g,device=device,dtype=torch.float64),torch.randn(shape,generator=g,device=device,dtype=torch.float64))/2**.5
 
+def quantize(y,bits,load=4.):
+    """Uniform mid-rise ADC per antenna/frame and per I/Q, clipping at `load` times the per-component RMS."""
+    rms=(y.abs().square().mean((-2,-1),keepdim=True)/2).sqrt()
+    step=2*load*rms/2**bits
+    q=lambda v:((torch.floor(v/step)+.5)*step).clamp(-load*rms+step/2,load*rms-step/2)
+    return torch.complex(q(y.real),q(y.imag))
+
 class ExperimentModel:
     def __init__(self,c,key=None):
         self.c=c; kw={'precision':'double','device':c.device}
@@ -62,8 +69,9 @@ class ExperimentModel:
         mother=torch.randint(0,2,(c.batch_size,c.num_users,1,c.n_bits),generator=generator(seed+1,c.device),device=c.device).to(torch.float64)
         noise=complex_noise((c.batch_size,1,c.num_bs_ant,c.num_symbols,c.fft_size),generator(seed+2,c.device),c.device)
         perturb=complex_noise(h.shape,generator(seed+3,c.device),c.device)
+        evm=complex_noise((c.batch_size,c.num_users,1,c.num_symbols,c.fft_size),generator(seed+5,c.device),c.device)
         digest=hashlib.sha256(h.cpu().numpy().tobytes()+mother.cpu().numpy().tobytes()).hexdigest()[:20]
-        return {'bits':mother,'h':h,'noise':noise,'csi_noise':perturb,'seed':seed,'fixture_id':digest}
+        return {'bits':mother,'h':h,'noise':noise,'csi_noise':perturb,'evm_noise':evm,'seed':seed,'fixture_id':digest}
 
     @torch.no_grad()
     def run_packet(self,ebno_db,packet=0,fixture=None):
@@ -82,8 +90,14 @@ class ExperimentModel:
                 x=x/plain_scale
             return self.grid_mapper(x),x
         (grid,x),times['tx_ms']=timed(transmit,c.device)
+        if c.tx_evm_db is not None:
+            # Transmitter distortion: Gaussian error at the given EVM on occupied REs, per user/frame.
+            used=grid.abs()>0
+            p=grid.abs().square().sum((-2,-1),keepdim=True)/used.sum((-2,-1),keepdim=True)
+            grid=grid+used*(10**(c.tx_evm_db/10)*p).sqrt()*f['evm_noise']
         # Explicit common AWGN and common H across schemes; no RNG inside channel.
         h=f['h']; y=(h*grid[:,None,None,:,:,:,:]).sum((3,4))+no.sqrt()*f['noise']
+        if c.adc_bits is not None: y=quantize(y,c.adc_bits)
         def receive():
             if c.csi_mode=='perfect': hh,err=h,torch.zeros((),device=c.device,dtype=torch.float64)
             elif c.csi_mode=='controlled_nmse':

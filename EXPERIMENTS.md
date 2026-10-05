@@ -20,7 +20,8 @@ Then run the notebook. Its validation gate must pass against the current source 
 - `receivers.py`: ordered per-subcarrier MMSE-SIC.
 - `model.py`: one configurable Sionna communication model and deterministic channel fixtures.
 - `runner.py`: ordered one-factor-family study groups, incremental raw records, latency statistics and threshold summaries.
-- `validation.py`: deterministic recovery, coding, receiver, channel and power checks.
+- `validation.py`: deterministic recovery, coding, receiver, channel, hardware and power checks.
+- `cost.py`: IoT cost tables (extra UE power, range loss, ADC bits, key size, operations per bit) from saved thresholds.
 
 ## Measurement contracts
 
@@ -32,7 +33,9 @@ GGH errors are counted before and after the U-inverse transformation, without us
 
 CPU key setup latency is one-time. Packet timing excludes topology/channel generation and includes host overhead, with device synchronization and  so why don't you add all the necessary cells discarded warmups. Batch means/std/median/p95 and amortized per-lattice-block encryption/decryption times are reported. Static key tensor storage is distinct from runtime complex matrix copies; neither is peak process/GPU memory. A CUDA run should report its own timings; included CPU times do not predict GPU performance.
 
-Defaults use stationary normalized 3GPP channels, with path loss/shadowing disabled and no hardware or intercarrier impairments. Enable link-budget flags for separate sensitivity studies. n=512, low Hadamard ratios and successful legitimate decryption do not establish cryptographic security.
+Defaults use stationary normalized 3GPP channels, with path loss/shadowing disabled and no hardware or intercarrier impairments. Enable link-budget flags for separate sensitivity studies. `tx_evm_db` adds Gaussian transmitter distortion on occupied REs; `adc_bits` adds a uniform mid-rise ADC per antenna (clip at 4× RMS). Both use paired fixture noise.
+
+The GGH error vector is complex, e = sigma(±1 ± j). A real-only e leaves the Q part unprotected. Plain and GGH use separate Eb/N0 grids (`{'plain': [...], 'ggh': [...]}`), because GGH needs about gamma dB more. n=512, low Hadamard ratios and successful legitimate decryption do not establish cryptographic security.
 
 Threshold estimates require a measured BLER crossing, never extrapolate, and need finer SNR sampling plus many more blocks for a paper. Confidence intervals use an approximate binomial model; correlations can make them optimistic. Zero observed errors is censored evidence, not zero true probability.
 

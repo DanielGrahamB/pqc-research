@@ -18,19 +18,28 @@ def paper_groups(ref=ExperimentConfig()):
     full=replace(plain,security_mode='ggh_full',tile_width=ref.fft_size,tile_time=ref.lattice_n//ref.fft_size)
     sub=replace(full,security_mode='ggh_subband',tile_width=ref.fft_size//2,tile_time=2*ref.lattice_n//ref.fft_size)
     coded=lambda c:replace(c,coded=True,coderate=.5)
+    # Four PHYs in every factor group: plain, plain+LDPC, GGH (Babai), GGH+LDPC.
+    phys=(plain,coded(plain),full,coded(full))
+    csi=[dict(csi_mode=v) for v in ('perfect','ls_nn','ls_lin')]+[dict(csi_mode='controlled_nmse',csi_nmse_db=v) for v in (-20.,-60.,-100.,-140.)]
+    hardware=[{},dict(tx_evm_db=-25.),dict(tx_evm_db=-35.),dict(tx_evm_db=-45.),dict(adc_bits=10),dict(adc_bits=12),dict(adc_bits=16)]
     return {
         '01_conventional_coding':[plain,coded(plain)],
         '02_full_ggh':[plain,full],
         '03_ggh_coding':[full,coded(full)],
         '04_localization':[full,sub,coded(full),coded(sub)],
-        '05_receiver':[replace(c,receiver=v) for c in (plain,full) for v in ('zf','lmmse','mmse_sic')],
-        '06_csi':[replace(c,csi_mode=v) for c in (plain,full) for v in ('perfect','ls_nn','ls_lin','controlled_nmse')],
-        '07a_users':[replace(c,num_users=v) for c in (plain,full) for v in (1,2,4,8)],
-        '07b_antennas':[replace(c,num_bs_ant=v) for c in (plain,full) for v in (4,8,16)],
-        '08_modulation':[replace(c,bits_per_symbol=v) for c in (plain,full) for v in (2,4,6)],
-        '09_channel':[replace(c,scenario=v) for c in (plain,full) for v in ('umi','uma','rma')],
+        '05_receiver':[replace(c,receiver=v) for c in phys for v in ('zf','lmmse','mmse_sic')],
+        '06_csi':[replace(c,**v) for c in phys for v in csi],
+        '07a_users':[replace(c,num_users=v) for c in phys for v in (1,2,4,8)],
+        '07b_antennas':[replace(c,num_bs_ant=v) for c in phys for v in (4,8,16,32)],
+        '08_modulation':[replace(c,bits_per_symbol=v) for c in phys for v in (2,4,6,8)],
+        '09_channel':[replace(c,scenario=v) for c in phys for v in ('umi','uma','rma')],
         '10_overhead':[plain,coded(plain),full,coded(full),sub,coded(sub)],
+        '11_hardware':[replace(c,**v) for c in phys for v in hardware],
     }
+
+def ebno_for(c,ebno_values):
+    """A dict gives separate grids, {'plain':[...],'ggh':[...]}; GGH needs about gamma dB more."""
+    return ebno_values['plain' if c.security_mode=='none' else 'ggh'] if isinstance(ebno_values,dict) else ebno_values
 
 def fingerprint():
     root=Path(__file__).parent
@@ -49,9 +58,9 @@ def run_group(configs,ebno_values,output,validation,registry=None,packets=20,war
             if key is not None:
                 key_record={'dimension':key.n,'seed':key.seed,'parameters':asdict(key.parameters),'measurements':key.metadata}
                 (output/f"key_{key.metadata['key_id']}.json").write_text(json.dumps(key_record,indent=2))
-            model=ExperimentModel(c,key)
-            for warm in range(warmups): model.run_packet(ebno_values[0],packet=100000+warm)
-            for ebno in ebno_values:
+            model=ExperimentModel(c,key); grid=ebno_for(c,ebno_values)
+            for warm in range(warmups): model.run_packet(grid[0],packet=100000+warm)
+            for ebno in grid:
                 for packet in range(packets):
                     row=model.run_packet(ebno,packet); row['config_index']=index
                     raw.write(json.dumps(row)+'\n'); raw.flush(); rows.append(row)
@@ -71,7 +80,7 @@ def summarize(rows):
     for r in rows: groups.setdefault((r['config_index'],r['ebno_db']),[]).append(r)
     results=[]
     for _,items in groups.items():
-        r=items[0]; result={k:r[k] for k in ('config_index','scheme','scenario','K','M','modulation','receiver','csi','coderate','lattice_n','tile','ebno_db','key_id')}
+        r=items[0]; result={k:r[k] for k in ('config_index','scheme','scenario','K','M','modulation','receiver','csi','csi_nmse_db','coderate','lattice_n','tile','tx_evm_db','adc_bits','ebno_db','key_id')}
         for error,total,metric in [('bit_errors','num_bits','ber'),('block_errors','num_blocks','bler')]:
             n=sum(x[total] for x in items); e=sum(x[error] for x in items); result[metric]=e/n
             # Wilson interval; block intervals are the primary reliability report.
