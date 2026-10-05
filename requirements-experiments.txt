@@ -1,0 +1,6 @@
+# Verified PyTorch-backed Sionna API. Install in an isolated environment.
+sionna==2.0.1
+torch==2.12.0
+numpy
+matplotlib
+jupyter
